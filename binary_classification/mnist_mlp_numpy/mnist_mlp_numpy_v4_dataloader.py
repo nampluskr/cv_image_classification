@@ -217,8 +217,8 @@ if __name__ == "__main__":
             logits = model(x)                           # (N, 1)
             preds = sigmoid(logits)                     # (N, 1)
 
-            loss = binary_cross_entropy(preds, y)              # (N, 1), (N, 1)
-            acc = binary_accuracy(preds, y)                    # (N, 1), (N, 1)
+            loss = binary_cross_entropy(preds, y)       # (N, 1), (N, 1)
+            acc = binary_accuracy(preds, y)             # (N, 1), (N, 1)
 
             # Backward propagation (manual)
             dout = (preds - y) / batch_size             # (N, 1)
