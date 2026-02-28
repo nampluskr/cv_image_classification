@@ -40,7 +40,7 @@ def softmax(x):
 def cross_entropy(preds, targets):
     # preds/targets: (N, num_classes)
     probs = np.sum(preds * targets, axis=1)
-    return -np.mean(np.log(probs + 1e-8))
+    return -np.mean(np.log(probs))
 
 def accuracy(preds, targets):
     # preds/targets: (N, num_classes)

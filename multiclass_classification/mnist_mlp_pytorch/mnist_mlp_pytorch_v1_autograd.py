@@ -1,6 +1,19 @@
 import os
 import gzip
 import numpy as np
+import random
+
+import torch
+
+
+def set_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benhmark = False
+    os.environ["PYTHONHASHSEED"] = str(seed)
 
 #################################################################
 # Dataset
@@ -26,87 +39,27 @@ def one_hot(x, num_classes):
 # Functions
 #################################################################
 def sigmoid(x):
-    return np.where(x >= 0, 1 / (1 + np.exp(-x)), np.exp(x) / (1 + np.exp(x)))
+    return torch.where(x >= 0, 1 / (1 + torch.exp(-x)), torch.exp(x) / (1 + torch.exp(x)))
 
 def sigmoid_grad(x):
     return x * (1 - x)
 
 def softmax(x):
     # x: (N, num_classes)
-    x_max = np.max(x, axis=1, keepdims=True)
-    e_x = np.exp(x - x_max)
-    return e_x / np.sum(e_x, axis=1, keepdims=True)
+    x_max = torch.max(x, dim=1, keepdims=True).values
+    e_x = torch.exp(x - x_max)
+    return e_x / torch.sum(e_x, dim=1, keepdims=True)
 
 def cross_entropy(preds, targets):
     # preds/targets: (N, num_classes)
-    probs = np.sum(preds * targets, axis=1)
-    return -np.mean(np.log(probs))
+    probs = torch.sum(preds * targets, dim=1)
+    return -torch.mean(torch.log(probs))
 
 def accuracy(preds, targets):
     # preds/targets: (N, num_classes)
-    targets = targets.argmax(axis=1)
-    return (preds.argmax(axis=1) == targets).mean()
+    targets = targets.argmax(dim=1)
+    return (preds.argmax(dim=1) == targets).float().mean()
 
-#################################################################
-# Modules
-#################################################################
-class Module:
-    def __init__(self):
-        self.params = []
-        self.grads = []
-
-    def __call__(self, x):
-        return self.forward(x)
-
-    def forward(self, x):
-        raise NotImplementedError
-
-class Linear(Module):
-    def __init__(self, in_features, out_features):
-        super().__init__()
-        self.w = np.random.randn(in_features, out_features)
-        self.b = np.zeros(out_features)
-        self.grad_w = np.zeros_like(self.w)
-        self.grad_b = np.zeros_like(self.b)
-
-        self.params.extend([self.w, self.b])
-        self.grads.extend([self.grad_w, self.grad_b])
-        self.x = None
-
-    def forward(self, x):
-        self.x = x
-        return np.dot(x, self.w) + self.b
-
-    def backward(self, dout):
-        self.grad_w[...] = np.dot(self.x.T, dout)
-        self.grad_b[...] = np.sum(dout, axis=0)
-        return np.dot(dout, self.w.T)
-
-class Sigmoid(Module):
-    def forward(self, x):
-        self.out = sigmoid(x)
-        return self.out
-
-    def backward(self, dout):
-        return dout * self.out * (1 - self.out)
-
-class Sequential(Module):
-    def __init__(self, *layers):
-        super().__init__()
-        self.layers = list(layers)
-
-        for layer in self.layers:
-            self.params.extend(layer.params)
-            self.grads.extend(layer.grads)
-
-    def forward(self, x):
-        for layer in self.layers:
-            x = layer.forward(x)
-        return x
-
-    def backward(self, dout):
-        for layer in reversed(self.layers):
-            dout = layer.backward(dout)
 
 if __name__ == "__main__":
     print(f">> {os.path.basename(__file__)}")
@@ -121,7 +74,7 @@ if __name__ == "__main__":
     NUM_EPOCHS = 10
     NUM_SAMPLES = 10
 
-    np.random.seed(SEED)
+    set_seed(SEED)
 
     #################################################################
     # Data loading
@@ -134,21 +87,29 @@ if __name__ == "__main__":
     #################################################################
     # Data Preprocessing
     #################################################################
-    x_train = x_train.reshape(-1, 784).astype(np.float32) / 255.0   # (60000, 784)
-    y_train = one_hot(y_train, num_classes=10).astype(np.float32)   # (60000, 10)
-    x_test = x_test.reshape(-1, 784).astype(np.float32) / 255.0     # (10000, 784)
-    y_test = one_hot(y_test, num_classes=10).astype(np.float32)     # (10000, 10)
+    x_train_np = x_train.reshape(-1, 784).astype(np.float32) / 255.0
+    y_train_np = one_hot(y_train, num_classes=10).astype(np.float32)
+    x_test_np = x_test.reshape(-1, 784).astype(np.float32) / 255.0
+    y_test_np = one_hot(y_test, num_classes=10).astype(np.float32)
+
+    x_train = torch.from_numpy(x_train_np)          # (60000, 784)
+    y_train = torch.from_numpy(y_train_np)          # (60000, 10)
+    x_test = torch.from_numpy(x_test_np)            # (10000, 784)
+    y_test = torch.from_numpy(y_test_np)            # (10000, 10)
 
     #################################################################
     # Modeling
     #################################################################
-    model = Sequential(
-        Linear(784, 256),
-        Sigmoid(),
-        Linear(256, 128),
-        Sigmoid(),
-        Linear(128, 10),
-    )
+    w1 = torch.randn(784, 256)
+    b1 = torch.zeros(256)
+    w2 = torch.randn(256, 128)
+    b2 = torch.zeros(128)
+    w3 = torch.randn(128, 10)
+    b3 = torch.zeros(10)
+
+    params = [w1, b1, w2, b2, w3, b3]
+    for param in params:
+        param.requires_grad_(True)
 
     #################################################################
     # Training
@@ -160,31 +121,36 @@ if __name__ == "__main__":
         total_acc = 0
         total_size = 0
 
-        indices = np.random.permutation(len(x_train))
+        indices = torch.randperm(len(x_train))
 
         for idx in range(0, len(x_train), BATCH_SIZE):
-            x = x_train[indices[idx: idx + BATCH_SIZE]]
-            y = y_train[indices[idx: idx + BATCH_SIZE]]
-            batch_size = len(x)
+            x = x_train[indices[idx:idx + BATCH_SIZE]]  # (N, 784)
+            y = y_train[indices[idx:idx + BATCH_SIZE]]  # (N, 10)
+            batch_size = x.size(0)
             total_size += batch_size
 
             # Forward propagation
-            logits = model(x)                           # (N, 10)
-            preds = softmax(logits)                     # (N, 10)
+            z1 = torch.matmul(x, w1) + b1               # (N, 256)
+            a1 = sigmoid(z1)                            # (N, 256)
+            z2 = torch.matmul(a1, w2) + b2              # (N, 128)
+            a2 = sigmoid(z2)                            # (N, 128)
+            z3 = torch.matmul(a2, w3) + b3              # (N, 10)
+            preds = softmax(z3)                         # (N, 10)
 
             loss = cross_entropy(preds, y)              # (N, 10), (N, 10)
             acc = accuracy(preds, y)                    # (N, 10), (N, 10)
 
-            # Backward propagation (manual)
-            dout = (preds - y) / batch_size             # (N, 10)
-            model.backward(dout)
+            # Backward propagation (autograd)
+            loss.backward()
 
-            # Update weights (in-place)
-            for param, grad in zip(model.params, model.grads):
-                param -= LEARNING_RATE * grad
+            # Update weights (no grad)
+            with torch.no_grad():
+                for param in params:
+                    param -= LEARNING_RATE * param.grad
+                    param.grad.zero_()
 
-            total_loss += loss * batch_size
-            total_acc += acc * batch_size
+            total_loss += loss.item() * batch_size
+            total_acc += acc.item() * batch_size
 
         print(f"[{epoch:>2}/{NUM_EPOCHS}] "
               f"loss:{total_loss/total_size:.3f} acc:{total_acc/total_size:.3f}")
@@ -201,18 +167,22 @@ if __name__ == "__main__":
     for idx in range(0, len(x_test), BATCH_SIZE):
         x = x_test[idx:idx + BATCH_SIZE]
         y = y_test[idx:idx + BATCH_SIZE]
-        batch_size = x.shape[0]
+        batch_size = x.size(0)
         total_size += batch_size
 
         # Forward propagation
-        logits = model(x)
-        preds = softmax(logits)
+        z1 = torch.matmul(x, w1) + b1
+        a1 = sigmoid(z1)
+        z2 = torch.matmul(a1, w2) + b2
+        a2 = sigmoid(z2)
+        z3 = torch.matmul(a2, w3) + b3
+        preds = softmax(z3)
 
         loss = cross_entropy(preds, y)
         acc = accuracy(preds, y)
 
-        total_loss += loss * batch_size
-        total_acc += acc * batch_size
+        total_loss += loss.item() * batch_size
+        total_acc += acc.item() * batch_size
 
     print(f"loss:{total_loss/total_size:.3f} acc:{total_acc/total_size:.3f}")
 
@@ -224,8 +194,12 @@ if __name__ == "__main__":
     x = x_test[:NUM_SAMPLES]
     y = y_test[:NUM_SAMPLES]
 
-    logits = model(x)
-    preds = softmax(logits)
+    z1 = torch.matmul(x, w1) + b1
+    a1 = sigmoid(z1)
+    z2 = torch.matmul(a1, w2) + b2
+    a2 = sigmoid(z2)
+    z3 = torch.matmul(a2, w3) + b3
+    preds = softmax(z3)
 
     for i in range(NUM_SAMPLES):
         print(f"Target: {y[i].argmax()} | Prediction: {preds[i].argmax()}")
