@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+*.pth
+*.pt
+*.ckpt
+
+# outputs/
+logs/
+runs/
+
+data/
+
+.coverage
+htmlcov/
+.pytest_cache/
+
+.vscode/
+.idea/
+.DS_Store
