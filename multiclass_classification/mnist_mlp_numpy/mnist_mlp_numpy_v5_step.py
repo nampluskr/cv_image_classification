@@ -32,15 +32,18 @@ def sigmoid_grad(x):
     return x * (1 - x)
 
 def softmax(x):
+    # x: (N, num_classes)
     x_max = np.max(x, axis=1, keepdims=True)
     e_x = np.exp(x - x_max)
     return e_x / np.sum(e_x, axis=1, keepdims=True)
 
 def cross_entropy(preds, targets):
+    # preds/targets: (N, num_classes)
     probs = np.sum(preds * targets, axis=1)
     return -np.mean(np.log(probs + 1e-8))
 
 def accuracy(preds, targets):
+    # preds/targets: (N, num_classes)
     targets = targets.argmax(axis=1)
     return (preds.argmax(axis=1) == targets).mean()
 
@@ -156,8 +159,6 @@ class CrossEntropyWithLogits:
     def __call__(self, logits, targets):
         self.preds = softmax(logits)
         self.targets = targets
-        if targets.ndim == 1:
-            self.targets = one_hot(targets, logits.shape[1])
         return cross_entropy(self.preds, self.targets)
 
     def grad(self):
